@@ -22,6 +22,10 @@
 
 
 #include "minimap.h"
+#include <cmath>
+#include <vector>
+#include <framework/graphics/coordsbuffer.h>
+#include <framework/graphics/drawqueue.h>
 #include "tile.h"
 #include "game.h"
 #include "spritemanager.h"
@@ -98,13 +102,85 @@ void Minimap::clean()
         m_tileBlocks[i].clear();
 }
 
-void Minimap::draw(const Rect& screenRect, const Position& mapCenter, float scale, const Color& color)
+// Ethedor: minimapa redondo. O circulo vira um poligono de CIRCLE_SIDES lados; cada bloco do minimapa (um quadrado
+// texturizado) e recortado por esse poligono (os dois sao convexos -> o recorte e convexo) e desenhado como leque de
+// triangulos, com a coordenada de textura calculada para cada vertice. Borda lisa, sem stencil e sem shader.
+namespace {
+const int CIRCLE_SIDES = 96;
+
+typedef std::vector<PointF> Poly;
+
+// recorta um poligono convexo por um semiplano (Sutherland-Hodgman, uma aresta por vez)
+Poly clipEdge(const Poly& in, int edge, float v)
+{
+    Poly out;
+    if(in.empty())
+        return out;
+    auto inside = [&](const PointF& p) {
+        switch(edge) {
+            case 0: return p.x >= v; // esquerda
+            case 1: return p.x <= v; // direita
+            case 2: return p.y >= v; // cima
+            default: return p.y <= v; // baixo
+        }
+    };
+    auto cut = [&](const PointF& a, const PointF& b) {
+        float t;
+        if(edge < 2)
+            t = (v - a.x) / (b.x - a.x);
+        else
+            t = (v - a.y) / (b.y - a.y);
+        return PointF(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
+    };
+    PointF prev = in.back();
+    bool prevIn = inside(prev);
+    for(const PointF& cur : in) {
+        bool curIn = inside(cur);
+        if(curIn) {
+            if(!prevIn)
+                out.push_back(cut(prev, cur));
+            out.push_back(cur);
+        } else if(prevIn) {
+            out.push_back(cut(prev, cur));
+        }
+        prev = cur;
+        prevIn = curIn;
+    }
+    return out;
+}
+
+Poly clipRect(const Poly& poly, float left, float top, float right, float bottom)
+{
+    Poly p = clipEdge(poly, 0, left);
+    p = clipEdge(p, 1, right);
+    p = clipEdge(p, 2, top);
+    return clipEdge(p, 3, bottom);
+}
+}
+
+void Minimap::draw(const Rect& screenRect, const Position& mapCenter, float scale, const Color& color, bool circular)
 {
     if(screenRect.isEmpty())
         return;
 
     Rect mapRect = calcMapRect(screenRect, mapCenter, scale);
-    g_drawQueue->addFilledRect(screenRect, color);
+
+    Poly circle;
+    if(circular) {
+        float cx = screenRect.left() + screenRect.width() / 2.0f;
+        float cy = screenRect.top() + screenRect.height() / 2.0f;
+        float r = (std::min)(screenRect.width(), screenRect.height()) / 2.0f;
+        for(int i = 0; i < CIRCLE_SIDES; ++i) {
+            float a = (float)(2.0 * Fw::pi * i / CIRCLE_SIDES);
+            circle.push_back(PointF(cx + r * std::cos(a), cy + r * std::sin(a)));
+        }
+        CoordsBuffer fill;
+        for(int i = 1; i + 1 < (int)circle.size(); ++i)
+            fill.addFillTriangle(circle[0], circle[i], circle[i + 1]);
+        g_drawQueue->addFillCoords(fill, color);
+    } else {
+        g_drawQueue->addFilledRect(screenRect, color);
+    }
 
     if(MMBLOCK_SIZE*scale <= 1 || !mapCenter.isMapPosition()) {
         return;
@@ -135,7 +211,22 @@ void Minimap::draw(const Rect& screenRect, const Position& mapCenter, float scal
                 Rect src(0, 0, MMBLOCK_SIZE, MMBLOCK_SIZE);
                 Rect dest(xs, ys, MMBLOCK_SIZE * scale, MMBLOCK_SIZE * scale);
 
-                g_drawQueue->addTexturedRect(dest, tex, src);
+                if(!circular) {
+                    g_drawQueue->addTexturedRect(dest, tex, src);
+                } else {
+                    // mesmas bordas que o addRect usa (right/bottom + 1)
+                    float l = dest.left(), t = dest.top(), rr = dest.right() + 1.0f, b = dest.bottom() + 1.0f;
+                    Poly piece = clipRect(circle, l, t, rr, b);
+                    if(piece.size() >= 3) {
+                        float sx = (float)src.width() / (rr - l), sy = (float)src.height() / (b - t);
+                        auto texOf = [&](const PointF& p) { return PointF(src.left() + (p.x - l) * sx, src.top() + (p.y - t) * sy); };
+                        CoordsBuffer coords;
+                        PointF t0 = texOf(piece[0]);
+                        for(size_t i = 1; i + 1 < piece.size(); ++i)
+                            coords.addTexturedTriangle(piece[0], piece[i], piece[i + 1], t0, texOf(piece[i]), texOf(piece[i + 1]));
+                        g_drawQueue->addTextureCoords(coords, tex);
+                    }
+                }
             }
         }
     }

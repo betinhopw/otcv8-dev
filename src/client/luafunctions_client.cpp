@@ -957,6 +957,8 @@ void Client::registerLuaFunctions()
     g_lua.bindClassMemberFunction<UIMinimap>("anchorPosition", &UIMinimap::anchorPosition);
     g_lua.bindClassMemberFunction<UIMinimap>("fillPosition", &UIMinimap::fillPosition);
     g_lua.bindClassMemberFunction<UIMinimap>("centerInPosition", &UIMinimap::centerInPosition);
+    g_lua.bindClassMemberFunction<UIMinimap>("setCircular", &UIMinimap::setCircular); // Ethedor
+    g_lua.bindClassMemberFunction<UIMinimap>("isCircular", &UIMinimap::isCircular);
 
     g_lua.registerClass<UIProgressRect, UIWidget>();
     g_lua.bindClassStaticFunction<UIProgressRect>("create", [] { return UIProgressRectPtr(new UIProgressRect); });

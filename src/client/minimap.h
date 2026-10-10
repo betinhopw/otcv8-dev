@@ -87,7 +87,7 @@ public:
 
     void clean();
 
-    void draw(const Rect& screenRect, const Position& mapCenter, float scale, const Color& color);
+    void draw(const Rect& screenRect, const Position& mapCenter, float scale, const Color& color, bool circular = false);
     Point getTilePoint(const Position& pos, const Rect& screenRect, const Position& mapCenter, float scale);
     Position getTilePosition(const Point& point, const Rect& screenRect, const Position& mapCenter, float scale);
     Rect getTileRect(const Position& pos, const Rect& screenRect, const Position& mapCenter, float scale);

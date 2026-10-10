@@ -45,7 +45,33 @@ void UIMinimap::drawSelf(Fw::DrawPane drawPane)
     if(drawPane != Fw::ForegroundPane)
         return;
 
-    g_minimap.draw(getPaddingRect(), getCameraPosition(), m_scale, m_color);
+    g_minimap.draw(getPaddingRect(), getCameraPosition(), m_scale, m_color, m_circular);
+}
+
+// Ethedor: no modo redondo, o que estiver fora do circulo (bandeiras, marcas) nao aparece nos cantos
+void UIMinimap::drawChildren(const Rect& visibleRect, Fw::DrawPane drawPane)
+{
+    if(!m_circular) {
+        UIWidget::drawChildren(visibleRect, drawPane);
+        return;
+    }
+    Rect area = getPaddingRect();
+    float cx = area.left() + area.width() / 2.0f, cy = area.top() + area.height() / 2.0f;
+    float r = (std::min)(area.width(), area.height()) / 2.0f;
+    for(const UIWidgetPtr& child : m_children) {
+        if(!child->isAutoDraw())
+            continue;
+        if(!child->isExplicitlyVisible() || !child->getRect().isValid() || child->getOpacity() < Fw::MIN_ALPHA)
+            continue;
+        Rect cr = child->getRect();
+        float dx = cr.left() + cr.width() / 2.0f - cx, dy = cr.top() + cr.height() / 2.0f - cy;
+        if(dx * dx + dy * dy > r * r)
+            continue;
+        Rect childVisibleRect = visibleRect.intersection(cr);
+        if(!childVisibleRect.isValid())
+            continue;
+        child->draw(childVisibleRect, drawPane);
+    }
 }
 
 bool UIMinimap::setZoom(int zoom)
@@ -153,5 +179,7 @@ void UIMinimap::onStyleApply(const std::string& styleName, const OTMLNodePtr& st
             setMaxZoom(node->value<int>());
         else if(node->tag() == "min-zoom")
             setMinZoom(node->value<int>());
+        else if(node->tag() == "circular")
+            setCircular(node->value<bool>());
     }
 }

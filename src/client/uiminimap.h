@@ -32,6 +32,7 @@ public:
     UIMinimap();
 
     void drawSelf(Fw::DrawPane drawPane);
+    void drawChildren(const Rect& visibleRect, Fw::DrawPane drawPane);
 
     bool zoomIn() { return setZoom(m_zoom+1); }
     bool zoomOut() { return setZoom(m_zoom-1); }
@@ -52,6 +53,9 @@ public:
     int getMaxZoom() { return m_maxZoom; }
     int getZoom() { return m_zoom; }
     float getScale() { return m_scale; }
+    // Ethedor: minimapa redondo (estilo "circular: true" ou setCircular)
+    void setCircular(bool circular) { m_circular = circular; }
+    bool isCircular() { return m_circular; }
 
     void anchorPosition(const UIWidgetPtr& anchoredWidget, Fw::AnchorEdge anchoredEdge, const Position& hookedPosition, Fw::AnchorEdge hookedEdge);
     void fillPosition(const UIWidgetPtr& anchoredWidget, const Position& hookedPosition);
@@ -71,6 +75,7 @@ private:
     int m_zoom;
     int m_minZoom;
     int m_maxZoom;
+    bool m_circular = false;
 };
 
 #endif

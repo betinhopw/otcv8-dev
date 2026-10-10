@@ -1,0 +1,75 @@
+# Ethedor: compila o client (otclient_dx.exe e otclient_gl.exe) do branch "ethedor".
+# O ci-cd.yml original usa windows-2019 e actions antigas que o GitHub ja aposentou; este roda em windows-2022
+# com o toolset v142 (o mesmo do vc16/otclient.vcxproj) e o vcpkg no commit que o OTCv8 3.2 usava.
+# Resultado: aba Actions -> ultima execucao -> Artifacts -> "client-windows" (zip com os dois .exe).
+name: Ethedor - client Windows
+
+on:
+  push:
+    branches: [ ethedor ]
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 180
+    env:
+      VCPKG_ROOT: C:\vcpkg_ethedor
+      VCPKG_DEFAULT_BINARY_CACHE: C:\vcpkg_cache
+      VCPKG_COMMIT: 3b3bd424827a1f7f4813216f6b32b6c61e386b2e
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: MSBuild
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Toolset v142 (VS 2019) no VS 2022
+      shell: pwsh
+      run: |
+        $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+        $tem = Test-Path "$vs\MSBuild\Microsoft\VC\v170\Platforms\Win32\PlatformToolsets\v142"
+        Write-Host "VS: $vs  v142 presente: $tem"
+        if (-not $tem) {
+          $inst = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
+          $p = Start-Process -FilePath $inst -ArgumentList "modify --installPath `"$vs`" --add Microsoft.VisualStudio.Component.VC.v142.x86.x64 --quiet --norestart --nocache" -Wait -PassThru
+          Write-Host "instalador terminou com $($p.ExitCode)"
+        }
+
+    - name: Cache dos pacotes do vcpkg
+      uses: actions/cache@v4
+      with:
+        path: C:\vcpkg_cache
+        key: vcpkg-x86-windows-static-${{ env.VCPKG_COMMIT }}-v1
+
+    - name: vcpkg (bibliotecas do client)
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Force -Path $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
+        git clone https://github.com/microsoft/vcpkg $env:VCPKG_ROOT
+        cd $env:VCPKG_ROOT
+        git checkout $env:VCPKG_COMMIT
+        .\bootstrap-vcpkg.bat -disableMetrics
+        .\vcpkg.exe install --triplet x86-windows-static boost-iostreams boost-asio boost-beast boost-system boost-variant boost-lockfree boost-process boost-program-options boost-uuid boost-filesystem luajit glew physfs openal-soft libogg libvorbis zlib libzip bzip2 openssl liblzma
+        if ($LASTEXITCODE -ne 0) { throw "vcpkg install falhou" }
+        .\vcpkg.exe integrate install
+
+    - name: Compilar
+      shell: pwsh
+      run: |
+        cd vc16
+        MSBuild otclient.sln /m /property:Configuration=DirectX /property:Platform=Win32 /p:BUILD_REVISION=${{ github.run_number }}
+        if ($LASTEXITCODE -ne 0) { throw "DirectX falhou" }
+        MSBuild otclient.sln /m /property:Configuration=OpenGL /property:Platform=Win32 /p:BUILD_REVISION=${{ github.run_number }}
+        if ($LASTEXITCODE -ne 0) { throw "OpenGL falhou" }
+        cd ..
+        Get-ChildItem -Filter "otclient_*.exe" | Format-Table Name, Length
+
+    - name: Enviar os .exe
+      uses: actions/upload-artifact@v4
+      with:
+        name: client-windows
+        path: |
+          otclient_dx.exe
+          otclient_gl.exe
+        if-no-files-found: error

@@ -49,6 +49,24 @@ public:
             unlock();
         m_vertexArray->addTriangle(a, b, c);
     }
+    // Ethedor: triangulo texturizado com coordenadas em float (usado pelo minimapa redondo)
+    void addTexturedTriangle(const PointF& a, const PointF& b, const PointF& c, const PointF& ta, const PointF& tb, const PointF& tc) {
+        if (m_locked)
+            return;
+        m_vertexArray->addVertex(a.x, a.y);
+        m_vertexArray->addVertex(b.x, b.y);
+        m_vertexArray->addVertex(c.x, c.y);
+        m_textureCoordArray->addVertex(ta.x, ta.y);
+        m_textureCoordArray->addVertex(tb.x, tb.y);
+        m_textureCoordArray->addVertex(tc.x, tc.y);
+    }
+    void addFillTriangle(const PointF& a, const PointF& b, const PointF& c) {
+        if (m_locked)
+            return;
+        m_vertexArray->addVertex(a.x, a.y);
+        m_vertexArray->addVertex(b.x, b.y);
+        m_vertexArray->addVertex(c.x, c.y);
+    }
     void addRect(const Rect& dest) {
         if (m_locked)
             unlock();
