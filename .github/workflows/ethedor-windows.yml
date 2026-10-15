@@ -50,8 +50,17 @@ jobs:
         cd $env:VCPKG_ROOT
         git checkout $env:VCPKG_COMMIT
         .\bootstrap-vcpkg.bat -disableMetrics
-        .\vcpkg.exe install --triplet x86-windows-static boost-iostreams boost-asio boost-beast boost-system boost-variant boost-lockfree boost-process boost-program-options boost-uuid boost-filesystem luajit glew physfs openal-soft libogg libvorbis zlib libzip bzip2 openssl liblzma
-        if ($LASTEXITCODE -ne 0) { throw "vcpkg install falhou" }
+        .\vcpkg.exe install --triplet x86-windows-static boost-iostreams boost-asio boost-beast boost-system boost-variant boost-lockfree boost-process boost-program-options boost-uuid boost-filesystem luajit glew physfs openal-soft libogg libvorbis zlib libzip bzip2 openssl liblzma 2>&1 | Tee-Object -FilePath C:\vcpkg_saida.txt
+        if ($LASTEXITCODE -ne 0) {
+          # o log do Actions nao abre pela API para o Claude: manda o fim da saida como "anotacao" (essa a API mostra)
+          $fim = (Get-Content C:\vcpkg_saida.txt -Tail 70) -join '%0A'
+          Write-Host "::error title=vcpkg::$fim"
+          Get-ChildItem "$env:VCPKG_ROOT\buildtrees" -Recurse -Filter "*-err.log" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 3 | ForEach-Object {
+            $t = (Get-Content $_.FullName -Tail 40) -join '%0A'
+            Write-Host "::error title=$($_.Name)::$t"
+          }
+          throw "vcpkg install falhou"
+        }
         .\vcpkg.exe integrate install
 
     - name: Compilar
