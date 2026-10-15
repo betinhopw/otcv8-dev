@@ -50,6 +50,15 @@ jobs:
         cd $env:VCPKG_ROOT
         git checkout $env:VCPKG_COMMIT
         .\bootstrap-vcpkg.bat -disableMetrics
+        # o vcpkg desse commit baixa o 7zip 21.07 de www.7-zip.org, que tirou o arquivo do ar (404): baixa de outro lugar antes
+        New-Item -ItemType Directory -Force -Path "$env:VCPKG_ROOT\downloads" | Out-Null
+        $z = "$env:VCPKG_ROOT\downloads\7z2107-extra.7z"
+        foreach ($u in @('https://sourceforge.net/projects/sevenzip/files/7-Zip/21.07/7z2107-extra.7z/download',
+                         'https://downloads.sourceforge.net/project/sevenzip/7-Zip/21.07/7z2107-extra.7z',
+                         'https://web.archive.org/web/2022/https://www.7-zip.org/a/7z2107-extra.7z')) {
+          try { curl.exe -L --fail -sS -o $z $u; if ((Test-Path $z) -and (Get-Item $z).Length -gt 500000) { Write-Host "7zip: $u"; break } } catch {}
+        }
+        Get-Item $z | Format-List Name, Length
         .\vcpkg.exe install --triplet x86-windows-static boost-iostreams boost-asio boost-beast boost-system boost-variant boost-lockfree boost-process boost-program-options boost-uuid boost-filesystem luajit glew physfs openal-soft libogg libvorbis zlib libzip bzip2 openssl liblzma 2>&1 | Tee-Object -FilePath C:\vcpkg_saida.txt
         if ($LASTEXITCODE -ne 0) {
           # o log do Actions nao abre pela API para o Claude: manda o fim da saida como "anotacao" (essa a API mostra)
