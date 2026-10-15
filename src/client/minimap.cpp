@@ -224,7 +224,8 @@ void Minimap::draw(const Rect& screenRect, const Position& mapCenter, float scal
                         PointF t0 = texOf(piece[0]);
                         for(size_t i = 1; i + 1 < piece.size(); ++i)
                             coords.addTexturedTriangle(piece[0], piece[i], piece[i + 1], t0, texOf(piece[i]), texOf(piece[i + 1]));
-                        g_drawQueue->addTextureCoords(coords, tex);
+                        // ampliado (zoom +): igual ao addTexturedRect, nao usa o atlas (senao aparecem listras entre os blocos)
+                        g_drawQueue->addTextureCoords(coords, tex, Color::white, scale > 1.0f);
                     }
                 }
             }

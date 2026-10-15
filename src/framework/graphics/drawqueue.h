@@ -55,6 +55,7 @@ struct DrawQueueItemTextureCoords : public DrawQueueItem {
     bool cache();
 
     CoordsBuffer m_coordsBuffer;
+    bool m_noCache = false;
 };
 
 struct DrawQueueItemColoredTextureCoords : public DrawQueueItem {
@@ -213,9 +214,11 @@ public:
         m_queue.push_back(item);
         return item;
     }
-    void addTextureCoords(CoordsBuffer& coords, const TexturePtr& texture, const Color& color = Color::white)
+    void addTextureCoords(CoordsBuffer& coords, const TexturePtr& texture, const Color& color = Color::white, bool noCache = false)
     {
-        m_queue.push_back(new DrawQueueItemTextureCoords(coords, texture, color));
+        auto item = new DrawQueueItemTextureCoords(coords, texture, color);
+        item->m_noCache = noCache; // Ethedor: ampliado nao pode ir pro atlas (o atlas vaza os vizinhos = listras)
+        m_queue.push_back(item);
     }
     void addColoredTextureCoords(CoordsBuffer& coords, const TexturePtr& texture, const std::vector<std::pair<int, Color>>& colors)
     {

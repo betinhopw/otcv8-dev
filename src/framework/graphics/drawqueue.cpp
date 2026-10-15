@@ -21,6 +21,8 @@ void DrawQueueItemTextureCoords::draw()
 
 bool DrawQueueItemTextureCoords::cache()
 {
+    if (m_noCache)
+        return false;
     if (!m_texture->canCache())
         return false;
     m_texture->update();
