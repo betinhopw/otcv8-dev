@@ -11,6 +11,9 @@ on:
     branches: [ ethedor ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   windows:
     runs-on: windows-2022
@@ -76,3 +79,11 @@ jobs:
           otclient_dx.exe
           otclient_gl.exe
         if-no-files-found: error
+
+    - name: Publicar como release (link fixo para baixar sem login)
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        $tag = "ethedor-${{ github.run_number }}"
+        gh release create $tag otclient_dx.exe otclient_gl.exe --repo ${{ github.repository }} --target ${{ github.sha }} --title "Ethedor client $tag" --notes "Compilado do branch ethedor (commit ${{ github.sha }})." --prerelease
