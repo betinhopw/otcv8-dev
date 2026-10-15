@@ -1,6 +1,8 @@
 # Ethedor: compila o client (otclient_dx.exe e otclient_gl.exe) do branch "ethedor".
 # O ci-cd.yml original usa windows-2019 e actions antigas que o GitHub ja aposentou; este roda em windows-2022
-# com o toolset v143 e um vcpkg de 2024 (o commit de 2022 que o OTCv8 3.2 usava nao baixa mais: 7zip/msys2 sairam do ar).
+# com o toolset v143. vcpkg: a FERRAMENTA e a mais nova (os vcpkg antigos tentam baixar pacotes msys2/7zip que sairam do ar),
+# mas as VERSOES das bibliotecas vem do baseline de nov/2024 (boost 1.86: o 1.87+ tirou o io_service que o OTCv8 usa).
+# Isso so funciona em "manifest mode": vc16/vcpkg_ethedor.json.
 # Resultado: aba Actions -> ultima execucao -> Artifacts -> "client-windows" (zip com os dois .exe).
 name: Ethedor - client Windows
 
@@ -16,7 +18,7 @@ jobs:
     env:
       VCPKG_ROOT: C:\vcpkg_ethedor
       VCPKG_DEFAULT_BINARY_CACHE: C:\vcpkg_cache
-      VCPKG_COMMIT: 2024.07.12
+      VCPKG_BASELINE: b2cb0da531c2f1f740045bfe7c4dac59f0b2b69c
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -28,7 +30,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: C:\vcpkg_cache
-        key: vcpkg-x86-windows-static-${{ env.VCPKG_COMMIT }}-v2
+        key: vcpkg-x86-windows-static-${{ env.VCPKG_BASELINE }}-v3
 
     - name: vcpkg (bibliotecas do client)
       shell: pwsh
@@ -36,9 +38,12 @@ jobs:
         New-Item -ItemType Directory -Force -Path $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
         git clone https://github.com/microsoft/vcpkg $env:VCPKG_ROOT
         cd $env:VCPKG_ROOT
-        git checkout $env:VCPKG_COMMIT
         .\bootstrap-vcpkg.bat -disableMetrics
-        .\vcpkg.exe install --triplet x86-windows-static boost-iostreams boost-asio boost-beast boost-system boost-variant boost-lockfree boost-process boost-program-options boost-uuid boost-filesystem luajit glew physfs openal-soft libogg libvorbis zlib libzip bzip2 openssl liblzma 2>&1 | Tee-Object -FilePath C:\vcpkg_saida.txt
+        # manifest: as bibliotecas do client, com as versoes do baseline (ver comentario no topo)
+        New-Item -ItemType Directory -Force -Path C:\otc_deps | Out-Null
+        Copy-Item "$env:GITHUB_WORKSPACE\vc16\vcpkg_ethedor.json" C:\otc_deps\vcpkg.json
+        cd C:\otc_deps
+        & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet x86-windows-static --x-install-root="$env:VCPKG_ROOT\installed" 2>&1 | Tee-Object -FilePath C:\vcpkg_saida.txt
         if ($LASTEXITCODE -ne 0) {
           # o log do Actions nao abre pela API para o Claude: manda o fim da saida como "anotacao" (essa a API mostra)
           $fim = (Get-Content C:\vcpkg_saida.txt -Tail 70) -join '%0A'
@@ -49,7 +54,8 @@ jobs:
           }
           throw "vcpkg install falhou"
         }
-        .\vcpkg.exe integrate install
+        & "$env:VCPKG_ROOT\vcpkg.exe" integrate install
+        Get-ChildItem "$env:VCPKG_ROOT\installed\x86-windows-static\lib" | Select-Object -ExpandProperty Name
 
     - name: Compilar
       shell: pwsh

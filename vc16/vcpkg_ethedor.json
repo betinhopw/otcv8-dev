@@ -1,0 +1,11 @@
+{
+  "name": "ethedor-otclient-deps",
+  "version-string": "1",
+  "builtin-baseline": "b2cb0da531c2f1f740045bfe7c4dac59f0b2b69c",
+  "dependencies": [
+    "boost-iostreams", "boost-asio", "boost-beast", "boost-system", "boost-variant", "boost-lockfree",
+    "boost-process", "boost-program-options", "boost-uuid", "boost-filesystem", "boost-algorithm",
+    "boost-tokenizer", "boost-lexical-cast", "boost-functional",
+    "luajit", "glew", "physfs", "openal-soft", "libogg", "libvorbis", "zlib", "libzip", "bzip2", "openssl", "liblzma"
+  ]
+}
