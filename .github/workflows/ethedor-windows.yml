@@ -1,6 +1,6 @@
 # Ethedor: compila o client (otclient_dx.exe e otclient_gl.exe) do branch "ethedor".
 # O ci-cd.yml original usa windows-2019 e actions antigas que o GitHub ja aposentou; este roda em windows-2022
-# com o toolset v142 (o mesmo do vc16/otclient.vcxproj) e o vcpkg no commit que o OTCv8 3.2 usava.
+# com o toolset v143 e um vcpkg de 2024 (o commit de 2022 que o OTCv8 3.2 usava nao baixa mais: 7zip/msys2 sairam do ar).
 # Resultado: aba Actions -> ultima execucao -> Artifacts -> "client-windows" (zip com os dois .exe).
 name: Ethedor - client Windows
 
@@ -16,7 +16,7 @@ jobs:
     env:
       VCPKG_ROOT: C:\vcpkg_ethedor
       VCPKG_DEFAULT_BINARY_CACHE: C:\vcpkg_cache
-      VCPKG_COMMIT: 3b3bd424827a1f7f4813216f6b32b6c61e386b2e
+      VCPKG_COMMIT: 2024.07.12
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -24,23 +24,11 @@ jobs:
     - name: MSBuild
       uses: microsoft/setup-msbuild@v2
 
-    - name: Toolset v142 (VS 2019) no VS 2022
-      shell: pwsh
-      run: |
-        $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
-        $tem = Test-Path "$vs\MSBuild\Microsoft\VC\v170\Platforms\Win32\PlatformToolsets\v142"
-        Write-Host "VS: $vs  v142 presente: $tem"
-        if (-not $tem) {
-          $inst = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
-          $p = Start-Process -FilePath $inst -ArgumentList "modify --installPath `"$vs`" --add Microsoft.VisualStudio.Component.VC.v142.x86.x64 --quiet --norestart --nocache" -Wait -PassThru
-          Write-Host "instalador terminou com $($p.ExitCode)"
-        }
-
     - name: Cache dos pacotes do vcpkg
       uses: actions/cache@v4
       with:
         path: C:\vcpkg_cache
-        key: vcpkg-x86-windows-static-${{ env.VCPKG_COMMIT }}-v1
+        key: vcpkg-x86-windows-static-${{ env.VCPKG_COMMIT }}-v2
 
     - name: vcpkg (bibliotecas do client)
       shell: pwsh
@@ -50,15 +38,6 @@ jobs:
         cd $env:VCPKG_ROOT
         git checkout $env:VCPKG_COMMIT
         .\bootstrap-vcpkg.bat -disableMetrics
-        # o vcpkg desse commit baixa o 7zip 21.07 de www.7-zip.org, que tirou o arquivo do ar (404): baixa de outro lugar antes
-        New-Item -ItemType Directory -Force -Path "$env:VCPKG_ROOT\downloads" | Out-Null
-        $z = "$env:VCPKG_ROOT\downloads\7z2107-extra.7z"
-        foreach ($u in @('https://sourceforge.net/projects/sevenzip/files/7-Zip/21.07/7z2107-extra.7z/download',
-                         'https://downloads.sourceforge.net/project/sevenzip/7-Zip/21.07/7z2107-extra.7z',
-                         'https://web.archive.org/web/2022/https://www.7-zip.org/a/7z2107-extra.7z')) {
-          try { curl.exe -L --fail -sS -o $z $u; if ((Test-Path $z) -and (Get-Item $z).Length -gt 500000) { Write-Host "7zip: $u"; break } } catch {}
-        }
-        Get-Item $z | Format-List Name, Length
         .\vcpkg.exe install --triplet x86-windows-static boost-iostreams boost-asio boost-beast boost-system boost-variant boost-lockfree boost-process boost-program-options boost-uuid boost-filesystem luajit glew physfs openal-soft libogg libvorbis zlib libzip bzip2 openssl liblzma 2>&1 | Tee-Object -FilePath C:\vcpkg_saida.txt
         if ($LASTEXITCODE -ne 0) {
           # o log do Actions nao abre pela API para o Claude: manda o fim da saida como "anotacao" (essa a API mostra)
@@ -76,9 +55,9 @@ jobs:
       shell: pwsh
       run: |
         cd vc16
-        MSBuild otclient.sln /m /property:Configuration=DirectX /property:Platform=Win32 /p:BUILD_REVISION=${{ github.run_number }}
+        MSBuild otclient.sln /m /property:Configuration=DirectX /property:Platform=Win32 /p:PlatformToolset=v143 /p:BUILD_REVISION=${{ github.run_number }}
         if ($LASTEXITCODE -ne 0) { throw "DirectX falhou" }
-        MSBuild otclient.sln /m /property:Configuration=OpenGL /property:Platform=Win32 /p:BUILD_REVISION=${{ github.run_number }}
+        MSBuild otclient.sln /m /property:Configuration=OpenGL /property:Platform=Win32 /p:PlatformToolset=v143 /p:BUILD_REVISION=${{ github.run_number }}
         if ($LASTEXITCODE -ne 0) { throw "OpenGL falhou" }
         cd ..
         Get-ChildItem -Filter "otclient_*.exe" | Format-Table Name, Length
