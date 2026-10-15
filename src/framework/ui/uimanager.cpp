@@ -300,7 +300,7 @@ void UIManager::onWidgetDestroy(const UIWidgetPtr& widget)
     if(m_hoveredWidget == widget)
         updateHoveredWidget();
 
-    for (int i = 0; i <= Fw::MouseButtonLast + 1; ++i) {
+    for (int i = 0; i <= Fw::MouseButtonLast; ++i) { // Ethedor: era "<= Last + 1" (lia 1 depois do fim do array; o gcc -O2 quebrava)
         if (m_pressedWidget[i] == widget) {
             updatePressedWidget((Fw::MouseButton)i, nullptr);
         }
