@@ -1128,7 +1128,10 @@ PathFindResult_ptr Map::newFindPath(const Position& start, const Position& goal,
     nodes[start] = initNode;
     searchList.push(initNode);
 
-    int limit = 50000;
+    // Ethedor: andar automatico longo (clique no minimapa / mapa grande). Antes 50000 nos = "Nao ha caminho" em
+    // destinos distantes; agora 400000 (roda em thread separada, so atrasa o inicio do passo).
+    const int LIMITE_NOS = 400000;
+    int limit = LIMITE_NOS;
     float distance = start.distance(goal);
 
     Node* dstNode = nullptr;
@@ -1165,7 +1168,7 @@ PathFindResult_ptr Map::newFindPath(const Position& start, const Position& goal,
                 }
                 if (!it->second) // no way
                     continue;
-                if (it->second->unseen > 50)
+                if (it->second->unseen > 150) // Ethedor: era 50 (trecho nunca visto no minimapa)
                     continue;
 
                 float diagonal = ((i == 0 || j == 0) ? 1.0f : 3.0f);
@@ -1195,7 +1198,7 @@ PathFindResult_ptr Map::newFindPath(const Position& start, const Position& goal,
         std::reverse(ret->path.begin(), ret->path.end());
         ret->status = Otc::PathFindResultOk;
     }
-    ret->complexity = 50000 - limit;
+    ret->complexity = LIMITE_NOS - limit;
 
     for (auto& node : nodes) {
         if (node.second)

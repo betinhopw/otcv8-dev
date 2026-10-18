@@ -275,7 +275,7 @@ bool LocalPlayer::autoWalk(Position destination, bool retry)
         if (self->m_autoWalkDestination != result->destination)
             return;
         if (g_extras.debugWalking) {
-            g_logger.info(stdext::format("Async path search finished with complexity %i/50000", result->complexity));
+            g_logger.info(stdext::format("Async path search finished with complexity %i/400000", result->complexity));
         }
 
         if (result->status != Otc::PathFindResultOk) {
