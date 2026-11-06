@@ -537,6 +537,9 @@
     <ClCompile Include="..\src\framework\core\graphicalapplication.cpp">
       <Filter>Source Files\framework\core</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\framework\core\ethedor_h264.cpp">
+      <Filter>Source Files\framework\core</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\framework\net\packet_player.cpp">
       <Filter>Source Files\framework\net</Filter>
     </ClCompile>

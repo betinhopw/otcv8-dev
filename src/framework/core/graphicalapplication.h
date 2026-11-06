@@ -69,6 +69,8 @@ public:
     bool startRecording(std::string file, int fps);
     std::string stopRecording();
     bool isRecording();
+    // 0 = padrao (ate 1920 px / qualidade 75 = ~0,1 bit por pixel no MP4). Vale para a proxima gravacao.
+    void setRecordingQuality(int maxWidth, int quality);
 
 protected:
     void resize(const Size& size);
@@ -90,6 +92,7 @@ private:
     std::shared_ptr<class EthedorVideoRecorder> m_recorder;
     std::atomic_bool m_recording{ false };
     ticks_t m_recordLast = 0;
+    int m_recordMaxWidth = 0, m_recordQuality = 0;
 };
 
 extern GraphicalApplication g_app;

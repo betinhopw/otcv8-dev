@@ -462,7 +462,8 @@ bool GraphicalApplication::startRecording(std::string file, int fps)
     if (m_recorder && m_recorder->isRunning())
         return false;
     auto rec = std::make_shared<EthedorVideoRecorder>();
-    if (!rec->start(file, fps))
+    auto tela = g_graphics.getViewportSize();
+    if (!rec->start(file, fps, tela.width(), tela.height(), m_recordMaxWidth, m_recordQuality))
         return false;
     m_recorder = rec;
     m_recordLast = 0;
@@ -482,6 +483,12 @@ std::string GraphicalApplication::stopRecording()
     return rec ? rec->stop() : std::string();
 }
 
+void GraphicalApplication::setRecordingQuality(int maxWidth, int quality)
+{
+    m_recordMaxWidth = maxWidth;
+    m_recordQuality = quality;
+}
+
 bool GraphicalApplication::isRecording()
 {
     return m_recording;
@@ -496,6 +503,10 @@ void GraphicalApplication::captureRecordingFrame()
     }
     if (!rec || !rec->isRunning())
         return;
+    if (rec->isFull()) { // arquivo chegou ao limite: termina o video (o Lua ve isRecording() = false e avisa)
+        stopRecording();
+        return;
+    }
     ticks_t agora = stdext::millis();
     if (m_recordLast != 0 && agora - m_recordLast < 1000 / rec->fps())
         return;
