@@ -42,6 +42,11 @@
 #include <framework/util/extras.h>
 #include <framework/util/stats.h>
 
+// Ethedor (05/11/2026): gravador de video. O stb_image_write (dominio publico) faz o JPEG de cada quadro.
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#define STBI_WRITE_NO_STDIO
+#include <framework/core/ethedor_videorecorder.h>
+
 #ifdef FW_SOUND
 #include <framework/sound/soundmanager.h>
 #endif
@@ -89,6 +94,8 @@ void GraphicalApplication::deinit()
 
 void GraphicalApplication::terminate()
 {
+    stopRecording(); // fechou o client gravando: termina o arquivo (indice e tamanhos) para o video abrir
+
     // destroy any remaining widget
     g_ui.terminate();
 
@@ -334,6 +341,9 @@ void GraphicalApplication::run()
         g_graphs[GRAPH_GPU_CALLS].addValue(g_painter->calls());
         g_graphs[GRAPH_GPU_DRAWS].addValue(g_painter->draws());
 
+        if (m_recording)
+            captureRecordingFrame(); // Ethedor: a tela ja esta pronta no buffer de tras
+
         AutoStat s(STATS_RENDER, "SwapBuffers");
         g_window.swapBuffers();
         g_graphics.checkForError(__FUNCTION__, __FILE__, __LINE__);
@@ -444,6 +454,61 @@ void GraphicalApplication::doScreenshot(std::string file)
             g_logger.error(std::string("Can't do screenshot: ") + e.what());
         }
     });
+}
+
+bool GraphicalApplication::startRecording(std::string file, int fps)
+{
+    std::lock_guard<std::mutex> lock(m_recordMutex);
+    if (m_recorder && m_recorder->isRunning())
+        return false;
+    auto rec = std::make_shared<EthedorVideoRecorder>();
+    if (!rec->start(file, fps))
+        return false;
+    m_recorder = rec;
+    m_recordLast = 0;
+    m_recording = true;
+    return true;
+}
+
+std::string GraphicalApplication::stopRecording()
+{
+    std::shared_ptr<EthedorVideoRecorder> rec;
+    {
+        std::lock_guard<std::mutex> lock(m_recordMutex);
+        m_recording = false;
+        rec = m_recorder;
+        m_recorder = nullptr;
+    }
+    return rec ? rec->stop() : std::string();
+}
+
+bool GraphicalApplication::isRecording()
+{
+    return m_recording;
+}
+
+void GraphicalApplication::captureRecordingFrame()
+{
+    std::shared_ptr<EthedorVideoRecorder> rec;
+    {
+        std::lock_guard<std::mutex> lock(m_recordMutex);
+        rec = m_recorder;
+    }
+    if (!rec || !rec->isRunning())
+        return;
+    ticks_t agora = stdext::millis();
+    if (m_recordLast != 0 && agora - m_recordLast < 1000 / rec->fps())
+        return;
+    m_recordLast = agora;
+    auto resolution = g_graphics.getViewportSize();
+    EthedorVideoRecorder::Frame f;
+    f.w = resolution.width();
+    f.h = resolution.height();
+    if (f.w <= 0 || f.h <= 0)
+        return;
+    f.rgba.resize((size_t)f.w * f.h * 4);
+    glReadPixels(0, 0, f.w, f.h, GL_RGBA, GL_UNSIGNED_BYTE, (GLubyte*)f.rgba.data());
+    rec->push(std::move(f));
 }
 
 void GraphicalApplication::scaleUp()

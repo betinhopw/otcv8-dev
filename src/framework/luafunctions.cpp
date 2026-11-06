@@ -324,6 +324,9 @@ void Application::registerLuaFunctions()
     g_lua.bindSingletonFunction("g_app", "getProcessingFps", &GraphicalApplication::getProcessingFps, &g_app);
     g_lua.bindSingletonFunction("g_app", "isOnInputEvent", &GraphicalApplication::isOnInputEvent, &g_app);
     g_lua.bindSingletonFunction("g_app", "doScreenshot", &GraphicalApplication::doScreenshot, &g_app);
+    g_lua.bindSingletonFunction("g_app", "startRecording", &GraphicalApplication::startRecording, &g_app); // Ethedor: gravador de video
+    g_lua.bindSingletonFunction("g_app", "stopRecording", &GraphicalApplication::stopRecording, &g_app);
+    g_lua.bindSingletonFunction("g_app", "isRecording", &GraphicalApplication::isRecording, &g_app);
     g_lua.bindSingletonFunction("g_app", "scaleDown", &GraphicalApplication::scaleDown, &g_app);
     g_lua.bindSingletonFunction("g_app", "scaleUp", &GraphicalApplication::scaleUp, &g_app);
     g_lua.bindSingletonFunction("g_app", "scale", &GraphicalApplication::scale, &g_app);

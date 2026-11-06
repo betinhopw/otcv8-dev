@@ -65,6 +65,11 @@ public:
 
     void doMapScreenshot(std::string fileName);
 
+    // Ethedor (05/11/2026): gravador de video (.avi MJPEG) - botao "Gravar" da barra de cima
+    bool startRecording(std::string file, int fps);
+    std::string stopRecording();
+    bool isRecording();
+
 protected:
     void resize(const Size& size);
     void inputEvent(InputEvent event);
@@ -80,6 +85,11 @@ private:
     FrameCounter m_graphicsFrames;
     FrameCounter m_processingFrames;
     stdext::timer m_windowPollTimer;
+    void captureRecordingFrame();
+    std::mutex m_recordMutex;
+    std::shared_ptr<class EthedorVideoRecorder> m_recorder;
+    std::atomic_bool m_recording{ false };
+    ticks_t m_recordLast = 0;
 };
 
 extern GraphicalApplication g_app;
