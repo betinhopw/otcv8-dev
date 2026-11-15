@@ -36,6 +36,10 @@
 #include <framework/graphics/fontmanager.h>
 #include <framework/graphics/atlas.h>
 #include <framework/graphics/image.h>
+#include <framework/graphics/apngloader.h>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <framework/graphics/textrender.h>
 #include <framework/graphics/shadermanager.h>
 #include <framework/input/mouse.h>
@@ -454,6 +458,63 @@ void GraphicalApplication::doScreenshot(std::string file)
             g_logger.error(std::string("Can't do screenshot: ") + e.what());
         }
     });
+}
+
+void GraphicalApplication::doScreenshotTo(std::string path)
+{
+    if (g_mainThreadId != std::this_thread::get_id()) {
+        g_graphicsDispatcher.addEvent(std::bind(&GraphicalApplication::doScreenshotTo, this, path));
+        return;
+    }
+    if (path.empty())
+        return;
+
+    auto resolution = g_graphics.getViewportSize();
+    int width = resolution.width();
+    int height = resolution.height();
+    auto pixels = std::make_shared<std::vector<uint8_t>>(width * height * 4 * sizeof(GLubyte), 0);
+    glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, (GLubyte*)(pixels->data()));
+
+    g_asyncDispatcher.dispatch([resolution, pixels, path] {
+        for (int line = 0, h = resolution.height(), w = resolution.width(); line != h / 2; ++line) {
+            std::swap_ranges(
+                pixels->begin() + 4 * w * line,
+                pixels->begin() + 4 * w * (line + 1),
+                pixels->begin() + 4 * w * (h - line - 1));
+        }
+        try {
+            std::stringstream data;
+            save_png(data, resolution.width(), resolution.height(), 4, (unsigned char*)pixels->data());
+            std::ofstream out(std::filesystem::u8path(path), std::ios::binary | std::ios::trunc);
+            if (!out)
+                g_logger.error(std::string("Can't do screenshot: failed to open '") + path + "'");
+            else
+                out << data.rdbuf();
+        } catch (std::exception& e) {
+            g_logger.error(std::string("Can't do screenshot: ") + e.what());
+        }
+    });
+}
+
+bool GraphicalApplication::pastaGravavel(std::string dir)
+{
+    try {
+        auto p = std::filesystem::u8path(dir);
+        if (!std::filesystem::is_directory(p))
+            return false;
+        auto teste = p / "ethedor_teste_pasta.tmp";
+        {
+            std::ofstream out(teste, std::ios::binary | std::ios::trunc);
+            if (!out)
+                return false;
+            out << "ok";
+        }
+        std::error_code ec;
+        std::filesystem::remove(teste, ec);
+        return true;
+    } catch (...) {
+        return false;
+    }
 }
 
 bool GraphicalApplication::startRecording(std::string file, int fps)

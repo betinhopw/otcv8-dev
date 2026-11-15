@@ -58,6 +58,10 @@ public:
     }
 
     void doScreenshot(std::string file);
+    // Ethedor (15/11/2026): print num caminho do Windows (UTF-8, ex.: C:\Users\X\Pictures\a.png) - o doScreenshot so
+    // escreve dentro da pasta de dados do jogo (PhysFS). pastaGravavel = a pasta existe e deixa criar arquivo.
+    void doScreenshotTo(std::string path);
+    bool pastaGravavel(std::string dir);
     void scaleUp();
     void scaleDown();
     void scale(float value);
