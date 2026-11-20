@@ -330,6 +330,10 @@ void Application::registerLuaFunctions()
     g_lua.bindSingletonFunction("g_app", "stopRecording", &GraphicalApplication::stopRecording, &g_app);
     g_lua.bindSingletonFunction("g_app", "isRecording", &GraphicalApplication::isRecording, &g_app);
     g_lua.bindSingletonFunction("g_app", "setRecordingQuality", &GraphicalApplication::setRecordingQuality, &g_app);
+    g_lua.bindSingletonFunction("g_app", "startLive", &GraphicalApplication::startLive, &g_app); // Ethedor: live YouTube/Twitch
+    g_lua.bindSingletonFunction("g_app", "stopLive", &GraphicalApplication::stopLive, &g_app);
+    g_lua.bindSingletonFunction("g_app", "liveStatus", &GraphicalApplication::liveStatus, &g_app);
+    g_lua.bindSingletonFunction("g_app", "liveLog", &GraphicalApplication::liveLog, &g_app);
     g_lua.bindSingletonFunction("g_app", "scaleDown", &GraphicalApplication::scaleDown, &g_app);
     g_lua.bindSingletonFunction("g_app", "scaleUp", &GraphicalApplication::scaleUp, &g_app);
     g_lua.bindSingletonFunction("g_app", "scale", &GraphicalApplication::scale, &g_app);

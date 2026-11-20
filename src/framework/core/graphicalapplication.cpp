@@ -50,6 +50,8 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #define STBI_WRITE_NO_STDIO
 #include <framework/core/ethedor_videorecorder.h>
+// Ethedor (20/11/2026): transmissao ao vivo (YouTube / Twitch) pelo ffmpeg da pasta do jogo
+#include <framework/core/ethedor_live.h>
 
 #ifdef FW_SOUND
 #include <framework/sound/soundmanager.h>
@@ -99,6 +101,8 @@ void GraphicalApplication::deinit()
 void GraphicalApplication::terminate()
 {
     stopRecording(); // fechou o client gravando: termina o arquivo (indice e tamanhos) para o video abrir
+    m_live = false;
+    ethedorLiveStop(true); // fechou o client ao vivo: o ffmpeg termina a transmissao
 
     // destroy any remaining widget
     g_ui.terminate();
@@ -345,8 +349,8 @@ void GraphicalApplication::run()
         g_graphs[GRAPH_GPU_CALLS].addValue(g_painter->calls());
         g_graphs[GRAPH_GPU_DRAWS].addValue(g_painter->draws());
 
-        if (m_recording)
-            captureRecordingFrame(); // Ethedor: a tela ja esta pronta no buffer de tras
+        if (m_recording || m_live)
+            captureRecordingFrame(); // Ethedor: a tela ja esta pronta no buffer de tras (gravador e live)
 
         AutoStat s(STATS_RENDER, "SwapBuffers");
         g_window.swapBuffers();
@@ -557,30 +561,66 @@ bool GraphicalApplication::isRecording()
 
 void GraphicalApplication::captureRecordingFrame()
 {
+    // le a tela UMA vez e entrega para o gravador e/ou para a live (cada um no seu ritmo de quadros)
     std::shared_ptr<EthedorVideoRecorder> rec;
     {
         std::lock_guard<std::mutex> lock(m_recordMutex);
         rec = m_recorder;
     }
-    if (!rec || !rec->isRunning())
-        return;
-    if (rec->isFull()) { // arquivo chegou ao limite: termina o video (o Lua ve isRecording() = false e avisa)
-        stopRecording();
-        return;
+    bool querGravar = false;
+    if (rec && rec->isRunning()) {
+        if (rec->isFull()) { // arquivo chegou ao limite: termina o video (o Lua ve isRecording() = false e avisa)
+            stopRecording();
+        } else {
+            ticks_t agora = stdext::millis();
+            if (m_recordLast == 0 || agora - m_recordLast >= 1000 / rec->fps()) {
+                m_recordLast = agora;
+                querGravar = true;
+            }
+        }
     }
-    ticks_t agora = stdext::millis();
-    if (m_recordLast != 0 && agora - m_recordLast < 1000 / rec->fps())
+    bool querLive = m_live && ethedorLiveQuerQuadro();
+    if (!querGravar && !querLive)
         return;
-    m_recordLast = agora;
     auto resolution = g_graphics.getViewportSize();
-    EthedorVideoRecorder::Frame f;
-    f.w = resolution.width();
-    f.h = resolution.height();
-    if (f.w <= 0 || f.h <= 0)
+    int w = resolution.width(), h = resolution.height();
+    if (w <= 0 || h <= 0)
         return;
-    f.rgba.resize((size_t)f.w * f.h * 4);
-    glReadPixels(0, 0, f.w, f.h, GL_RGBA, GL_UNSIGNED_BYTE, (GLubyte*)f.rgba.data());
-    rec->push(std::move(f));
+    std::vector<uint8_t> rgba((size_t)w * h * 4);
+    glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, (GLubyte*)rgba.data());
+    if (querGravar) {
+        EthedorVideoRecorder::Frame f;
+        f.w = w;
+        f.h = h;
+        if (querLive) f.rgba = rgba; else f.rgba = std::move(rgba);
+        rec->push(std::move(f));
+    }
+    if (querLive)
+        ethedorLivePush(std::move(rgba), w, h);
+}
+
+std::string GraphicalApplication::startLive(std::string servico, std::string chave, int qualidade, bool comSom)
+{
+    std::string erro = ethedorLiveStart(servico, chave, qualidade, comSom);
+    if (erro.empty())
+        m_live = true;
+    return erro;
+}
+
+void GraphicalApplication::stopLive()
+{
+    m_live = false;
+    ethedorLiveStop(false);
+}
+
+std::string GraphicalApplication::liveStatus()
+{
+    return ethedorLiveStatus();
+}
+
+std::string GraphicalApplication::liveLog()
+{
+    return ethedorLiveLog();
 }
 
 void GraphicalApplication::scaleUp()

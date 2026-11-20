@@ -94,6 +94,7 @@ set(framework_SOURCES ${framework_SOURCES}
     ${CMAKE_CURRENT_LIST_DIR}/core/filestream.h
     ${CMAKE_CURRENT_LIST_DIR}/core/graphicalapplication.cpp
     ${CMAKE_CURRENT_LIST_DIR}/core/ethedor_h264.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/core/ethedor_live.cpp
     ${CMAKE_CURRENT_LIST_DIR}/core/graphicalapplication.h
     ${CMAKE_CURRENT_LIST_DIR}/core/inputevent.h
     ${CMAKE_CURRENT_LIST_DIR}/core/logger.cpp
@@ -491,6 +492,7 @@ if(FRAMEWORK_GRAPHICS)
 
         ${CMAKE_CURRENT_LIST_DIR}/core/graphicalapplication.cpp
     ${CMAKE_CURRENT_LIST_DIR}/core/ethedor_h264.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/core/ethedor_live.cpp
         ${CMAKE_CURRENT_LIST_DIR}/core/graphicalapplication.h
     )
     set(framework_DEFINITIONS ${framework_DEFINITIONS} -DFW_GRAPHICS)

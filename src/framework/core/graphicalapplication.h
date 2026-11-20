@@ -75,6 +75,12 @@ public:
     bool isRecording();
     // 0 = padrao (ate 1920 px / qualidade 75 = ~0,1 bit por pixel no MP4). Vale para a proxima gravacao.
     void setRecordingQuality(int maxWidth, int quality);
+    // Ethedor (20/11/2026): live no YouTube/Twitch (ethedor_live.h). startLive devolve "" ou o texto do erro;
+    // liveStatus = "estado\tsegundos\tkbps\tatrasoMs\tmensagem"; liveLog = ultimas linhas do ffmpeg (sem a chave)
+    std::string startLive(std::string servico, std::string chave, int qualidade, bool comSom);
+    void stopLive();
+    std::string liveStatus();
+    std::string liveLog();
 
 protected:
     void resize(const Size& size);
@@ -95,6 +101,7 @@ private:
     std::mutex m_recordMutex;
     std::shared_ptr<class EthedorVideoRecorder> m_recorder;
     std::atomic_bool m_recording{ false };
+    std::atomic_bool m_live{ false };
     ticks_t m_recordLast = 0;
     int m_recordMaxWidth = 0, m_recordQuality = 0;
 };
