@@ -643,6 +643,9 @@ private:
                     ultima = "O servidor recusou a live. Confira a chave da transmissao.";
                 if (b.find("h264_mf") != std::string::npos || b.find("encoder") != std::string::npos)
                     return "O Windows nao conseguiu codificar o video (H.264).";
+                // RTMP que nao abre (Twitch/YouTube recusam chave errada fechando a conexao: "I/O error")
+                if (b.find("error opening output") != std::string::npos && ultima.empty())
+                    ultima = "O servidor nao aceitou a live. Confira a chave da transmissao e a internet.";
             }
         }
         return ultima.empty() ? "A live parou. Tente de novo." : ultima;
