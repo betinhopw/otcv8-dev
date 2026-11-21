@@ -18,7 +18,9 @@
 #include <string>
 #include <vector>
 
-// servico: "youtube" ou "twitch". chave: so letras, numeros, _ e -. qualidade: 1 = 480p, 2 = 720p, 3 = 1080p (30 fps).
+// servico: "youtube", "twitch" ou "ambos" (chave = "chaveYouTube|chaveTwitch": o video e codificado uma vez e vai para
+// os dois; se um recusar, a live continua no outro). chave: so letras, numeros, _ e -. qualidade: 1 = 480p, 2 = 720p,
+// 3 = 1080p (30 fps).
 // comSom: manda o som do PC. Devolve "" se comecou (ainda conectando) ou o texto do erro.
 std::string ethedorLiveStart(const std::string& servico, const std::string& chave, int qualidade, bool comSom);
 // termina a live (em segundo plano: o ffmpeg fecha a transmissao direito). esperar = so volta quando acabou.

@@ -224,14 +224,17 @@ class Sessao
 public:
     Preset p{};
     bool comSom = true;
-    std::string chave, servico;
+    std::vector<std::string> chaves; // escondidas no log (uma por servico)
+    std::string servico;
 
     std::atomic_bool parar{ false }, ffmpegSaiu{ false }, videoAcabou{ false };
     std::atomic<int64_t> ultimoQuadroUs{ 0 };
 
     ~Sessao() { fecharHandles(); }
 
-    std::string comecar(const std::wstring& ffmpeg, const std::string& url)
+    // urls: 1 destino = flv direto; 2 destinos (YouTube + Twitch) = um codificador so e o "tee" manda para os dois
+    // (onfail=ignore: se um recusar, a live continua no outro)
+    std::string comecar(const std::wstring& ffmpeg, const std::vector<std::string>& urls)
     {
         static std::atomic_int contador{ 0 };
         m_nomePipe = L"\\\\.\\pipe\\ethedor_live_" + std::to_wstring(GetCurrentProcessId()) + L"_" + std::to_wstring(++contador);
@@ -262,9 +265,9 @@ public:
                  L" -c:v h264_mf -rate_control cbr -b:v %dk -maxrate %dk -bufsize %dk -g %d -bf 0"
                  L" -color_primaries bt709 -color_trc bt709 -colorspace bt709 -color_range tv"
                  L" -c:a aac -b:a 128k -ar 48000 -ac 2"
-                 L" -f flv -flvflags no_duration_filesize \"%ls\"",
+                 L" %ls",
                  ffmpeg.c_str(), p.w, p.h, p.fps, TAXA_AUDIO, m_nomePipe.c_str(), k, k, k * 2, p.fps * 2,
-                 utf8ParaW(url).c_str());
+                 utf8ParaW(saida(urls)).c_str());
 
         STARTUPINFOW si{};
         si.cb = sizeof(si);
@@ -334,6 +337,7 @@ public:
         if (ffmpegSaiu && !parar && est != "erro") { est = "erro"; msg = "A live parou."; }
         if (parar && est != "erro") est = "parando";
         int seg = (est == "aovivo" && m_aoVivoUs > 0) ? (int)((agoraUs() - m_aoVivoUs) / 1000000) : 0;
+        if (est == "aovivo" && msg.empty() && !m_aviso.empty()) msg = m_aviso;
         if (est == "aovivo" && m_atrasado && msg.empty()) msg = "Internet lenta: a live esta atrasando.";
         char buf[64];
         snprintf(buf, sizeof(buf), "%d\t%d\t%d\t", seg, (int)m_kbps, est == "aovivo" ? (int)m_atrasoMs : 0);
@@ -358,10 +362,36 @@ private:
 
     std::string semChave(std::string s) const
     {
-        if (chave.empty()) return s;
-        size_t i;
-        while ((i = s.find(chave)) != std::string::npos) s.replace(i, chave.size(), "***");
+        for (auto& chave : chaves) {
+            if (chave.empty()) continue;
+            size_t i;
+            while ((i = s.find(chave)) != std::string::npos) s.replace(i, chave.size(), "***");
+        }
         return s;
+    }
+
+    static std::string saida(const std::vector<std::string>& urls)
+    {
+        if (urls.size() == 1) return "-f flv -flvflags no_duration_filesize \"" + urls[0] + "\"";
+        std::string t = "-flags +global_header -f tee \"";
+        for (size_t i = 0; i < urls.size(); ++i) {
+            if (i) t += "|";
+            t += "[f=flv:onfail=ignore:flvflags=no_duration_filesize]" + urls[i];
+        }
+        return t + "\"";
+    }
+
+    // com 2 destinos, o tee avisa quando um deles cai ("Slave ... failed" / "continuing with N/2 slaves")
+    void conferirDestino(const std::string& linha)
+    {
+        std::string b = linha;
+        std::transform(b.begin(), b.end(), b.begin(), ::tolower);
+        if (chaves.size() < 2 || (b.find("slave") == std::string::npos && b.find("continuing with") == std::string::npos)) return;
+        std::string qual = b.find("youtube") != std::string::npos ? "YouTube" : (b.find("twitch") != std::string::npos ? "Twitch" : "");
+        std::lock_guard<std::mutex> l(m_mSt);
+        if (!qual.empty()) m_caiu = qual;
+        m_aviso = (m_caiu.empty() ? std::string("Um dos destinos") : "O " + m_caiu) +
+                  " nao aceitou a live (confira a chave). A live continua no outro.";
     }
 
     // --- video ---------------------------------------------------------------------------------------------
@@ -574,6 +604,7 @@ private:
         std::string s = semChave(linha);
         while (!s.empty() && (s.back() == '\r' || s.back() == '\n' || s.back() == ' ')) s.pop_back();
         if (s.empty()) return;
+        conferirDestino(s);
         std::lock_guard<std::mutex> l(m_mSt);
         m_linhas.push_back(s);
         while (m_linhas.size() > 40) m_linhas.pop_front();
@@ -672,7 +703,7 @@ private:
     int m_sw = 0, m_sh = 0, m_dw = 0, m_dh = 0, m_ox = 0, m_oy = 0;
 
     std::mutex m_mSt;
-    std::string m_estado = "parado", m_msg;
+    std::string m_estado = "parado", m_msg, m_aviso, m_caiu;
     std::deque<std::string> m_linhas;
     std::atomic<double> m_kbps{ 0 };
     std::atomic_int m_atrasoMs{ 0 };
@@ -697,14 +728,31 @@ void juntarTerminando()
 
 std::string ethedorLiveStart(const std::string& servico, const std::string& chave, int qualidade, bool comSom)
 {
-    std::string url;
+    // "ambos": chave = "chaveDoYouTube|chaveDaTwitch" (a | nunca aparece numa chave valida)
+    std::vector<std::string> urls, chaves;
+    auto destino = [&](const std::string& srv, const std::string& c) -> std::string {
+        if (!chaveValida(c)) return "Chave da transmissao invalida (so letras, numeros, - e _).";
+        if (srv == "youtube") urls.push_back("rtmp://a.rtmp.youtube.com/live2/" + c);
+        else if (srv == "twitch") urls.push_back("rtmp://live.twitch.tv/app/" + c);
 #ifdef ETHEDOR_LIVE_TESTE
-    if (servico == "teste") url = std::string(getenv("ETHEDOR_LIVE_URL") ? getenv("ETHEDOR_LIVE_URL") : "") + "/" + chave;
+        else if (srv == "teste") urls.push_back(std::string(getenv("ETHEDOR_LIVE_URL") ? getenv("ETHEDOR_LIVE_URL") : "") + "/" + c);
+        else if (srv == "teste2") urls.push_back(std::string(getenv("ETHEDOR_LIVE_URL2") ? getenv("ETHEDOR_LIVE_URL2") : "") + "/" + c);
 #endif
-    if (servico == "youtube") url = "rtmp://a.rtmp.youtube.com/live2/" + chave;
-    else if (servico == "twitch") url = "rtmp://live.twitch.tv/app/" + chave;
-    if (url.empty()) return "Escolha YouTube ou Twitch.";
-    if (!chaveValida(chave)) return "Chave da transmissao invalida (so letras, numeros, - e _).";
+        else return "Escolha YouTube, Twitch ou os dois.";
+        chaves.push_back(c);
+        return "";
+    };
+    std::string erro;
+    if (servico == "ambos" || servico == "testes") {
+        size_t bar = chave.find('|');
+        if (bar == std::string::npos) return "Cole as duas chaves (YouTube e Twitch).";
+        std::string a = servico == "ambos" ? "youtube" : "teste", b = servico == "ambos" ? "twitch" : "teste2";
+        erro = destino(a, chave.substr(0, bar));
+        if (erro.empty()) erro = destino(b, chave.substr(bar + 1));
+    } else {
+        erro = destino(servico, chave);
+    }
+    if (!erro.empty()) return erro;
 
     std::wstring ffmpeg = pastaDoExe() + L"ffmpeg\\ffmpeg.exe";
     if (GetFileAttributesW(ffmpeg.c_str()) == INVALID_FILE_ATTRIBUTES)
@@ -724,9 +772,9 @@ std::string ethedorLiveStart(const std::string& servico, const std::string& chav
     auto s = std::make_shared<Sessao>();
     s->p = presetDe(qualidade);
     s->comSom = comSom;
-    s->chave = chave;
+    s->chaves = chaves;
     s->servico = servico;
-    std::string erro = s->comecar(ffmpeg, url);
+    erro = s->comecar(ffmpeg, urls);
     if (!erro.empty()) {
         s->terminar();
         return erro;
