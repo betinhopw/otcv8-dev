@@ -484,9 +484,18 @@ private:
         while (!parar) {
             int64_t alvo = t0 + n * 1000000 / p.fps, agora = agoraUs();
             if (agora < alvo) { Sleep((DWORD)std::max<int64_t>(1, (alvo - agora) / 1000)); continue; }
-            // passou 3 s do horario: internet lenta (o ffmpeg nao consegue mandar tudo)
+            // 20/11 (live de verdade na Twitch): o ffmpeg fica parado enquanto conecta (~5 s) e o vídeo atrasa. Mandar o
+            // atraso de uma vez nao adianta: a Twitch/YouTube recebem no ritmo do relogio e a live ficava atrasada para
+            // sempre ("internet lenta"). Atrasou mais de 1 s: PULA para o agora (o som pula junto, ver loopSom).
+            if (agora - alvo > 1000000) {
+                n = (agora - t0) * p.fps / 1000000;
+                alvo = t0 + n * 1000000 / p.fps;
+                ++m_pulos;
+                int64_t av = m_aoVivoUs;
+                if (av > 0 && agora - av > 3000000) m_ultimoPuloUs = agora; // pulou com a live ja no ar = rede/PC lento
+            }
             m_atrasoMs = (int)std::max<int64_t>(0, (agora - alvo) / 1000);
-            m_atrasado = agora - alvo > 3000000;
+            m_atrasado = m_ultimoPuloUs > 0 && agora - m_ultimoPuloUs < 10000000;
             {
                 std::lock_guard<std::mutex> l(m_mQuadro);
                 if (m_qseq != seqUsado && !m_quadro.empty()) {
@@ -568,6 +577,8 @@ private:
                 }
             }
             int64_t devido = (agoraUs() - t0) * TAXA_AUDIO / 1000000;
+            // atrasou mais de 1 s (o ffmpeg parou para conectar): pula junto com o video em vez de mandar o silencio todo
+            if (escritas < devido - TAXA_AUDIO) escritas = devido - TAXA_AUDIO / 50;
             size_t qtd = buf.size() / 2;
             if (qtd > 0) {
                 // adiantado demais (o Windows mandou um monte de uma vez): joga fora o excesso para nao atrasar a live
@@ -691,7 +702,8 @@ private:
     HANDLE m_in = nullptr, m_out = nullptr, m_err = nullptr, m_pipeSom = nullptr, m_proc = nullptr, m_job = nullptr;
     std::wstring m_nomePipe;
     std::thread m_tVideo, m_tSom, m_tSaida, m_tErro;
-    int64_t m_inicioUs = 0, m_aoVivoUs = 0;
+    int64_t m_inicioUs = 0;
+    std::atomic<int64_t> m_aoVivoUs{ 0 }; // lido pela thread do video (32 bits: int64 comum nao e atomico)
 
     std::mutex m_mQuadro;
     std::vector<uint8_t> m_quadro;
@@ -708,6 +720,8 @@ private:
     std::atomic<double> m_kbps{ 0 };
     std::atomic_int m_atrasoMs{ 0 };
     std::atomic_bool m_atrasado{ false };
+    std::atomic<int64_t> m_ultimoPuloUs{ 0 };
+    std::atomic_int m_pulos{ 0 };
 };
 
 // ---------------------------------------------------------------------------------------------------------------
