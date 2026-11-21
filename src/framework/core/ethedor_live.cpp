@@ -226,6 +226,13 @@ public:
     bool comSom = true;
     std::vector<std::string> chaves; // escondidas no log (uma por servico)
     std::string servico;
+    // 21/11: codifica na PLACA DE VIDEO (h264_mf -hw_encoding 1: NVIDIA/Intel/AMD pelo Media Foundation do Windows).
+    // Se a placa falhar antes de entrar no ar, ethedorLiveStatus reinicia a live no processador (falhouPlaca).
+    bool placa = true;
+    std::atomic_bool falhouPlaca{ false };
+    std::atomic_bool m_errosAcabou{ false };
+    std::vector<std::string> urls;
+    std::wstring ffmpegExe;
 
     std::atomic_bool parar{ false }, ffmpegSaiu{ false }, videoAcabou{ false };
     std::atomic<int64_t> ultimoQuadroUs{ 0 };
@@ -262,11 +269,11 @@ public:
                  L" -thread_queue_size 64 -f rawvideo -pix_fmt nv12 -s %dx%d -framerate %d -i pipe:0"
                  L" -thread_queue_size 4096 -f s16le -ar %d -ac 2 -i \"%ls\""
                  L" -map 0:v:0 -map 1:a:0"
-                 L" -c:v h264_mf -rate_control cbr -b:v %dk -maxrate %dk -bufsize %dk -g %d -bf 0"
+                 L" -c:v h264_mf -hw_encoding %d -rate_control cbr -b:v %dk -maxrate %dk -bufsize %dk -g %d -bf 0"
                  L" -color_primaries bt709 -color_trc bt709 -colorspace bt709 -color_range tv"
                  L" -c:a aac -b:a 128k -ar 48000 -ac 2"
                  L" %ls",
-                 ffmpeg.c_str(), p.w, p.h, p.fps, TAXA_AUDIO, m_nomePipe.c_str(), k, k, k * 2, p.fps * 2,
+                 ffmpeg.c_str(), p.w, p.h, p.fps, TAXA_AUDIO, m_nomePipe.c_str(), placa ? 1 : 0, k, k, k * 2, p.fps * 2,
                  utf8ParaW(saida(urls)).c_str());
 
         STARTUPINFOW si{};
@@ -661,11 +668,34 @@ private:
         lerLinhas(m_out, true);
         // o stdout fechou: o ffmpeg terminou (por pedido ou por erro)
         if (m_proc) WaitForSingleObject(m_proc, 3000);
+        // a linha do erro chega pelo stderr: espera a leitura dele acabar (o ffmpeg ja saiu, o cano fechou)
+        // (flag em vez de join: a thread do stderr e criada logo depois desta)
+        for (int i = 0; i < 200 && !parar && placa && m_aoVivoUs == 0 && !m_errosAcabou; ++i) Sleep(10);
+        if (!parar && placa && m_aoVivoUs == 0 && erroDoCodificador()) {
+            falhouPlaca = true;  // ethedorLiveStatus reinicia no processador
+            ffmpegSaiu = true;
+            return;
+        }
         ffmpegSaiu = true;
         if (!parar) estado("erro", motivoDoErro());
     }
 
-    void lerErros() { lerLinhas(m_err, false); }
+    void lerErros() { lerLinhas(m_err, false); m_errosAcabou = true; }
+
+    // o ffmpeg reclamou do codificador de video (placa sem H.264, driver velho...)
+    bool erroDoCodificador()
+    {
+        std::lock_guard<std::mutex> l(m_mSt);
+        for (auto& s : m_linhas) {
+            std::string b = s;
+            std::transform(b.begin(), b.end(), b.begin(), ::tolower);
+            if (b.find("h264_mf") != std::string::npos || b.find("mft") != std::string::npos ||
+                b.find("encoder") != std::string::npos || b.find("hardware") != std::string::npos ||
+                b.find("error while opening") != std::string::npos)
+                return true;
+        }
+        return false;
+    }
 
     std::string motivoDoErro()
     {
@@ -730,6 +760,7 @@ std::shared_ptr<Sessao> g_sessao;      // a live atual (ligada, com erro ou term
 std::shared_ptr<Sessao> g_terminando;  // sendo fechada em segundo plano
 std::thread g_tTerminar;
 std::string g_ultimoLog;
+std::atomic_bool g_semPlaca{ false };   // a placa de video falhou uma vez: o resto desta execucao usa o processador
 
 void juntarTerminando()
 {
@@ -788,6 +819,9 @@ std::string ethedorLiveStart(const std::string& servico, const std::string& chav
     s->comSom = comSom;
     s->chaves = chaves;
     s->servico = servico;
+    s->urls = urls;
+    s->ffmpegExe = ffmpeg;
+    s->placa = !g_semPlaca;
     erro = s->comecar(ffmpeg, urls);
     if (!erro.empty()) {
         s->terminar();
@@ -813,6 +847,28 @@ void ethedorLiveStop(bool esperar)
 std::string ethedorLiveStatus()
 {
     std::lock_guard<std::mutex> l(g_m);
+    if (g_sessao && g_sessao->ffmpegSaiu && g_sessao->falhouPlaca && !g_sessao->parar) {
+        // a placa de video nao codificou: a mesma live de novo, no processador (sem o jogador fazer nada)
+        g_semPlaca = true;
+        auto velha = g_sessao;
+        velha->terminar();
+        auto s = std::make_shared<Sessao>();
+        s->p = velha->p;
+        s->comSom = velha->comSom;
+        s->chaves = velha->chaves;
+        s->servico = velha->servico;
+        s->urls = velha->urls;
+        s->ffmpegExe = velha->ffmpegExe;
+        s->placa = false;
+        g_ultimoLog = velha->log();
+        std::string erro = s->comecar(s->ffmpegExe, s->urls);
+        if (!erro.empty()) {
+            s->terminar();
+            g_sessao.reset();
+            return "erro	0	0	0	" + erro;
+        }
+        g_sessao = s;
+    }
     if (g_sessao) return g_sessao->status();
     if (g_terminando && !(g_terminando->videoAcabou && g_terminando->ffmpegSaiu)) return "parando\t0\t0\t0\t";
     return "parado\t0\t0\t0\t";
