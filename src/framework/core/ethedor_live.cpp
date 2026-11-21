@@ -266,7 +266,11 @@ public:
         wchar_t args[2048];
         swprintf(args, 2048,
                  L"\"%ls\" -hide_banner -loglevel warning -nostats -nostdin -progress pipe:1"
-                 L" -thread_queue_size 64 -f rawvideo -pix_fmt nv12 -s %dx%d -framerate %d -i pipe:0"
+                 // 21/11: as cores (BT.709, faixa limitada = o que a conversao RGB->NV12 daqui gera) vao TAMBEM na entrada.
+                 // So na saida, o ffmpeg 7.1 achava a entrada "sem cor" e convertia a imagem no processador a cada quadro
+                 // (3 a 4 nucleos em 1080p: era isso que pesava a live, nao o codificador).
+                 L" -thread_queue_size 64 -f rawvideo -pix_fmt nv12 -s %dx%d -framerate %d"
+                 L" -color_primaries bt709 -color_trc bt709 -colorspace bt709 -color_range tv -i pipe:0"
                  L" -thread_queue_size 4096 -f s16le -ar %d -ac 2 -i \"%ls\""
                  L" -map 0:v:0 -map 1:a:0"
                  L" -c:v h264_mf -hw_encoding %d -rate_control cbr -b:v %dk -maxrate %dk -bufsize %dk -g %d -bf 0"
